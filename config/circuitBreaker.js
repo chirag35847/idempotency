@@ -1,5 +1,6 @@
 const CircuitBreaker = require('opossum');
 const { processPayment } = require('../services/paymentService');
+const { logger } = require('../utils/logger');
 
 const options = {
     timeout: 3000,               // If function takes longer than 3 seconds, it's a failure
@@ -11,16 +12,16 @@ const paymentCircuitBreaker = new CircuitBreaker(processPayment, options);
 
 // Listen to events for demonstration purposes in the console
 paymentCircuitBreaker.on('open', () => {
-    console.warn('\n[🛑 CIRCUIT BREAKER] State changed to OPEN! \nExternal service failing. Further requests will be blocked immediately (Fail Fast).\n');
+    logger.warn('\n[🛑 CIRCUIT BREAKER] State changed to OPEN! \nExternal service failing. Further requests will be blocked immediately (Fail Fast).\n');
 });
 paymentCircuitBreaker.on('halfOpen', () => {
-    console.warn('\n[⚠️ CIRCUIT BREAKER] State changed to HALF-OPEN! \nTesting if external service is back online with the next request...\n');
+    logger.warn('\n[⚠️ CIRCUIT BREAKER] State changed to HALF-OPEN! \nTesting if external service is back online with the next request...\n');
 });
 paymentCircuitBreaker.on('close', () => {
-    console.warn('\n[✅ CIRCUIT BREAKER] State changed to CLOSED! \nService resumed normally.\n');
+    logger.info('\n[✅ CIRCUIT BREAKER] State changed to CLOSED! \nService resumed normally.\n');
 });
 paymentCircuitBreaker.on('fallback', () => {
-    console.log('[🛡️ CIRCUIT BREAKER] Fallback action executed.');
+    logger.info('[🛡️ CIRCUIT BREAKER] Fallback action executed.');
 });
 
 // Optional fallback function - what to return when circuit is open or function fails

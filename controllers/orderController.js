@@ -1,6 +1,7 @@
 const { redisClient } = require('../config/redis');
 const { getFeatureFlags } = require('../config/featureFlags');
 const paymentCircuitBreaker = require('../config/circuitBreaker');
+const { logger } = require('../utils/logger');
 
 // Helper function to simulate order processing delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -12,12 +13,11 @@ const createOrder = async (req, res) => {
     if (!itemId || !quantity) {
         return res.status(400).json({ error: "itemId and quantity are required" });
     }
-
-    const { idempotency_enabled } = getFeatureFlags();
+    const { idempotency_enabled } = await getFeatureFlags();
 
     // Step 1: Check Feature Flag
     if (!idempotency_enabled) {
-        console.log("Idempotency is disabled. Processing request normally.");
+        logger.info("Idempotency is disabled. Processing request normally.");
         await delay(2000); // Simulate processing time
         const orderId = `ORD-${Math.floor(Math.random() * 1000000)}`;
         return res.status(201).json({ 
@@ -31,7 +31,7 @@ const createOrder = async (req, res) => {
         return res.status(400).json({ error: "Idempotency-Key header is required when idempotency feature is enabled" });
     }
 
-    console.log(`Processing order with Idempotency-Key: ${idempotencyKey}`);
+    logger.info(`Processing order with Idempotency-Key: ${idempotencyKey}`);
     const lockKey = `lock:${idempotencyKey}`;
     const resultKey = `result:${idempotencyKey}`;
 
@@ -45,19 +45,19 @@ const createOrder = async (req, res) => {
         });
 
         if (!lockAcquired) {
-            console.log(`Conflict! Request already processing for key: ${idempotencyKey}`);
+            logger.warn(`Conflict! Request already processing for key: ${idempotencyKey}`);
             return res.status(409).json({ 
                 error: "Conflict", 
                 message: "A request with this idempotency key is already being processed." 
             });
         }
 
-        console.log(`Lock acquired for key: ${idempotencyKey}. Checking for previous result.`);
+        logger.info(`Lock acquired for key: ${idempotencyKey}. Checking for previous result.`);
 
         // Step 3: Check if result already exists from a previous successful request
         const cachedResult = await redisClient.get(resultKey);
         if (cachedResult) {
-            console.log(`Result found in cache for key: ${idempotencyKey}. Returning cached response.`);
+            logger.info(`Result found in cache for key: ${idempotencyKey}. Returning cached response.`);
             
             // Release the lock before returning
             await redisClient.del(lockKey);
@@ -70,17 +70,17 @@ const createOrder = async (req, res) => {
         }
 
         // Step 4: Process the actual business logic
-        console.log(`No previous result found. Processing business logic for order...`);
+        logger.info(`No previous result found. Processing business logic for order...`);
         const orderId = `ORD-${Math.floor(Math.random() * 1000000)}`;
 
-        console.log(`Calling Payment Gateway (Protected by Circuit Breaker) for order ${orderId}...`);
+        logger.info(`Calling Payment Gateway (Protected by Circuit Breaker) for order ${orderId}...`);
         
         // --- CIRCUIT BREAKER IN ACTION ---
         const amount = quantity * 10; 
         const paymentResult = await paymentCircuitBreaker.fire(orderId, itemId, amount);
 
         if (!paymentResult.success) {
-            console.log(`Order ${orderId} failed due to downstream issues. Releasing lock so user can retry later.`);
+            logger.error(`Order ${orderId} failed due to downstream issues. Releasing lock so user can retry later.`);
             // Do NOT save an idempotency result, because the order technically wasn't placed.
             // Release the lock so the user can retry.
             await redisClient.del(lockKey); 
@@ -109,11 +109,11 @@ const createOrder = async (req, res) => {
             EX: 86400 
         });
 
-        console.log(`Business logic completed. Response saved for key: ${idempotencyKey}.`);
+        logger.info(`Business logic completed. Response saved for key: ${idempotencyKey}.`);
 
         // Step 6: Release the lock
         await redisClient.del(lockKey);
-        console.log(`Lock released for key: ${idempotencyKey}.`);
+        logger.info(`Lock released for key: ${idempotencyKey}.`);
 
         return res.status(201).json({
             message: "Order placed successfully",
@@ -122,7 +122,7 @@ const createOrder = async (req, res) => {
         });
 
     } catch (err) {
-        console.error("Error processing order:", err);
+        logger.error("Error processing order:", err);
         // Ensure lock is released on error 
         await redisClient.del(lockKey).catch(console.error);
         res.status(500).json({ error: "Internal Server Error" });

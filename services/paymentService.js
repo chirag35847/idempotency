@@ -1,21 +1,30 @@
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const axios = require('axios');
+const { logger } = require('../utils/logger');
 
-// Mock external service that might fail under load or randomly
-const processPayment = async (orderId, itemId, amount) => {
-    // Simulate network call
-    await delay(1000); 
-    
-    // Demonstrate a failure if the itemId is 'fail'
-    // This allows students to easily simulate an external service outage
-    if (itemId === 'fail') {
-        throw new Error("Payment Gateway Timeout or Internal Error");
+const processPayment = async (orderId, itemId, amount, maxRetries = 3, timeoutMs = 2000) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await axios.post(
+                'http://localhost:4000/pay',
+                { orderId, itemId, amount },
+                { timeout: timeoutMs } // Axios handles timeouts much more cleanly!
+            );
+
+            return response.data;
+        } catch (error) {
+            const isTimeout = error.code === 'ECONNABORTED';
+            const serverError = error.response?.data?.error;
+            
+            logger.warn(`Payment attempt ${attempt} failed: ${isTimeout ? 'Request Timed Out' : (serverError || error.message)}`);
+            
+            if (attempt === maxRetries) {
+                throw new Error(isTimeout ? 'Payment Gateway Timeout (Max retries reached)' : (serverError || error.message));
+            }
+            
+            // Optional: Delay between retries
+            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        }
     }
-    
-    return { 
-        success: true, 
-        transactionId: `TXN-${Math.floor(Math.random() * 10000)}`,
-        charged: amount
-    };
 };
 
 module.exports = { processPayment };

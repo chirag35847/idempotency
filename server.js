@@ -2,11 +2,13 @@ const express = require('express');
 const { connectRedis } = require('./config/redis');
 const adminRoutes = require('./routes/adminRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const { traceMiddleware, logger } = require('./utils/logger');
 
 const app = express();
 
 // Middlewares
 app.use(express.json());
+app.use(traceMiddleware);
 
 // Routes
 app.use('/admin', adminRoutes);

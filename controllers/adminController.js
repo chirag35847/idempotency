@@ -1,11 +1,11 @@
 const { getFeatureFlags, updateFeatureFlags } = require('../config/featureFlags');
 
-const getFlags = (req, res) => {
-    res.json(getFeatureFlags());
+const getFlags = async (req, res) => {
+    res.json(await getFeatureFlags());
 };
 
-const updateFlags = (req, res) => {
-    const updatedFlags = updateFeatureFlags(req.body);
+const updateFlags = async (req, res) => {
+    const updatedFlags = await updateFeatureFlags(req.body);
     res.json({ message: "Feature flags updated", flags: updatedFlags });
 };
 
