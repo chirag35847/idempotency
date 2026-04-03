@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'node-app'
+    static_configs:
+      # host.docker.internal routes traffic from Docker network to your Mac host network where server.js runs
+      - targets: ['host.docker.internal:3000']

@@ -3,14 +3,17 @@ const { connectRedis } = require('./config/redis');
 const adminRoutes = require('./routes/adminRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const { traceMiddleware, logger } = require('./utils/logger');
+const { metricsMiddleware, exposeMetrics } = require('./utils/metrics');
 
 const app = express();
 
 // Middlewares
 app.use(express.json());
 app.use(traceMiddleware);
+app.use(metricsMiddleware);
 
 // Routes
+app.get('/metrics', exposeMetrics);
 app.use('/admin', adminRoutes);
 app.use('/api/orders', orderRoutes);
 
