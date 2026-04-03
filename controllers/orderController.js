@@ -1,5 +1,6 @@
 const { redisClient } = require('../config/redis');
 const { getFeatureFlags } = require('../config/featureFlags');
+const paymentCircuitBreaker = require('../config/circuitBreaker');
 
 // Helper function to simulate order processing delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -40,7 +41,7 @@ const createOrder = async (req, res) => {
         // EX: Set an expiration in seconds.
         const lockAcquired = await redisClient.set(lockKey, 'locked', {
             NX: true,
-            EX: 10
+            EX: 15
         });
 
         if (!lockAcquired) {
@@ -68,15 +69,38 @@ const createOrder = async (req, res) => {
             });
         }
 
-        // Step 4: Process the actual business logic (simulate with delay)
+        // Step 4: Process the actual business logic
         console.log(`No previous result found. Processing business logic for order...`);
-        await delay(5000); // Simulate 5 seconds processing time
+        const orderId = `ORD-${Math.floor(Math.random() * 1000000)}`;
+
+        console.log(`Calling Payment Gateway (Protected by Circuit Breaker) for order ${orderId}...`);
+        
+        // --- CIRCUIT BREAKER IN ACTION ---
+        const amount = quantity * 10; 
+        const paymentResult = await paymentCircuitBreaker.fire(orderId, itemId, amount);
+
+        if (!paymentResult.success) {
+            console.log(`Order ${orderId} failed due to downstream issues. Releasing lock so user can retry later.`);
+            // Do NOT save an idempotency result, because the order technically wasn't placed.
+            // Release the lock so the user can retry.
+            await redisClient.del(lockKey); 
+            
+            return res.status(503).json({
+                error: "ServiceUnavailable",
+                message: paymentResult.error,
+                circuitBreakerStatus: paymentCircuitBreaker.opened ? "OPEN" : "CLOSED"
+            });
+        }
+
+        // Additional simulated delay so students can notice concurrent requests being blocked by Idempotency Lock
+        await delay(3000); 
         
         const orderResponse = {
-            orderId: `ORD-${Math.floor(Math.random() * 1000000)}`,
+            orderId,
             status: "CREATED",
             itemId,
-            quantity
+            quantity,
+            payment: paymentResult
         };
 
         // Step 5: Save the result for future identical requests

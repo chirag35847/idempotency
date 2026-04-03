@@ -87,3 +87,36 @@ curl -D - -X POST http://localhost:3000/api/orders \
 
 The first one will wait for 5 seconds and return `201 Created`.
 The second one will immediately return `409 Conflict`.
+
+### 4. Circuit Breaker Demonstration
+
+The application also comes with a Circuit Breaker around the mocked external payment service. 
+
+**Normal Request (Closed Circuit):**
+```bash
+curl -X POST http://localhost:3000/api/orders \
+-H "Content-Type: application/json" \
+-H "Idempotency-Key: cb-demo-1" \
+-d '{"itemId": "laptop", "quantity": 1}'
+```
+*Returns success and saves item correctly. Observe the node server console.*
+
+**Trigger a Downstream Failure:**
+If you pass `"fail"` as the `itemId`, the mock service will forcefully throw an error. If you send it a few times, it will exceed the 50% failure threshold and trip the Circuit Breaker into the `OPEN` state.
+```bash
+# Run this 3 to 4 times consecutively to trip the breaker
+curl -X POST http://localhost:3000/api/orders \
+-H "Content-Type: application/json" \
+-H "Idempotency-Key: random-$RANDOM" \
+-d '{"itemId": "fail", "quantity": 1}'
+```
+
+**Observe Fail-Fast (Open Circuit):**
+Once the circuit breaker trips, any request (even valid ones with valid `itemId`) will **immediately** fail with `503 Service Unavailable` without even attempting to wait for the downstream. 
+```bash
+curl -X POST http://localhost:3000/api/orders \
+-H "Content-Type: application/json" \
+-H "Idempotency-Key: random-$RANDOM" \
+-d '{"itemId": "laptop", "quantity": 1}'
+```
+*Wait 10 seconds, and the circuit will enter `HALF-OPEN` state, allowing the next request to attempt integration again.*

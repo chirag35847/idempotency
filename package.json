@@ -5,6 +5,7 @@
   "main": "server.js",
   "dependencies": {
     "express": "^4.18.2",
+    "opossum": "^9.0.0",
     "redis": "^4.6.10"
   },
   "scripts": {
