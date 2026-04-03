@@ -1,0 +1,13 @@
+{
+  "name": "idempotency-demo",
+  "version": "1.0.0",
+  "description": "Demo of idempotency and locking using Redis",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "redis": "^4.6.10"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
